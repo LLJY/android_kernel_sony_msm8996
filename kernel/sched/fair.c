@@ -19,11 +19,6 @@
  *  Adaptive scheduling granularity, math enhancements by Peter Zijlstra
  *  Copyright (C) 2007 Red Hat, Inc., Peter Zijlstra <pzijlstr@redhat.com>
  */
-/*
- * NOTE: This file has been modified by Sony Mobile Communications Inc.
- * Modifications are Copyright (c) 2015 Sony Mobile Communications Inc,
- * and licensed under the license of the file.
- */
 
 #include <linux/latencytop.h>
 #include <linux/sched.h>
@@ -2584,24 +2579,11 @@ static DEFINE_MUTEX(boost_mutex);
 
 static void boost_kick_cpus(void)
 {
-	u32 nr_running;
 	int i;
 
 	for_each_online_cpu(i) {
-		/*
-		 * kick only "small" cluster
-		 */
-		if (cpu_capacity(i) != max_capacity) {
-			nr_running = ACCESS_ONCE(cpu_rq(i)->nr_running);
-
-			/*
-			 * make sense to interrupt CPU if its runqueue
-			 * has something running in order to check for
-			 * migration afterwards, otherwise skip it.
-			 */
-			if (nr_running)
-				boost_kick(i);
-		}
+		if (cpu_capacity(i) != max_capacity)
+			boost_kick(i);
 	}
 }
 
@@ -3278,7 +3260,7 @@ static inline bool
 wake_to_waker_cluster(struct cpu_select_env *env, int this_cpu)
 {
 	return !env->need_idle && !env->reason && env->sync &&
-		task_will_fit(env->p, this_cpu);
+	       task_will_fit(env->p, this_cpu);
 }
 
 static inline int
@@ -3822,7 +3804,21 @@ int sched_hmp_proc_update_handler(struct ctl_table *table, int write,
 	int ret;
 	unsigned int old_val;
 	unsigned int *data = (unsigned int *)table->data;
-	int update_min_nice = 0;
+	int update_task_count = 0;
+
+	if (!sched_enable_hmp)
+		return 0;
+
+	/*
+	 * The policy mutex is acquired with cpu_hotplug.lock
+	 * held from cpu_up()->cpufreq_governor_interactive()->
+	 * sched_set_window(). So enforce the same order here.
+	 */
+	if (write && (data == &sysctl_sched_upmigrate_pct ||
+	    data == (unsigned int *)&sysctl_sched_upmigrate_min_nice)) {
+		update_task_count = 1;
+		get_online_cpus();
+	}
 
 	mutex_lock(&policy_mutex);
 
@@ -3830,7 +3826,7 @@ int sched_hmp_proc_update_handler(struct ctl_table *table, int write,
 
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 
-	if (ret || !write || !sched_enable_hmp)
+	if (ret || !write)
 		goto done;
 
 	if (write && (old_val == *data))
@@ -3845,7 +3841,6 @@ int sched_hmp_proc_update_handler(struct ctl_table *table, int write,
 			ret = -EINVAL;
 			goto done;
 		}
-		update_min_nice = 1;
 	} else if (data != &sysctl_sched_select_prev_cpu_us) {
 		/*
 		 * all tunables other than min_nice and prev_cpu_us are
@@ -3867,19 +3862,17 @@ int sched_hmp_proc_update_handler(struct ctl_table *table, int write,
 	 * includes taking runqueue lock of all online cpus and re-initiatizing
 	 * their big counter values based on changed criteria.
 	 */
-	if ((data == &sysctl_sched_upmigrate_pct || update_min_nice)) {
-		get_online_cpus();
+	if (update_task_count)
 		pre_big_task_count_change(cpu_online_mask);
-	}
 
 	set_hmp_defaults();
 
-	if ((data == &sysctl_sched_upmigrate_pct || update_min_nice)) {
+	if (update_task_count)
 		post_big_task_count_change(cpu_online_mask);
-		put_online_cpus();
-	}
 
 done:
+	if (update_task_count)
+		put_online_cpus();
 	mutex_unlock(&policy_mutex);
 	return ret;
 }
@@ -4805,25 +4798,17 @@ static void check_enqueue_throttle(struct cfs_rq *cfs_rq);
 static void
 enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 {
-	bool renorm = !(flags & ENQUEUE_WAKEUP) || (flags & ENQUEUE_WAKING);
-	bool curr = cfs_rq->curr == se;
-
 	/*
-	 * If we're the current task, we must renormalise before calling
-	 * update_curr().
+	 * Update the normalized vruntime before updating min_vruntime
+	 * through calling update_curr().
 	 */
-	if (renorm && curr)
+	if (!(flags & ENQUEUE_WAKEUP) || (flags & ENQUEUE_WAKING))
 		se->vruntime += cfs_rq->min_vruntime;
 
+	/*
+	 * Update run-time statistics of the 'current'.
+	 */
 	update_curr(cfs_rq);
-
-	/*
-	 * Otherwise, renormalise after, such that we're placed at the current
-	 * moment in time, instead of some random moment in the past.
-	 */
-	if (renorm && !curr)
-		se->vruntime += cfs_rq->min_vruntime;
-
 	enqueue_entity_load_avg(cfs_rq, se, flags & ENQUEUE_WAKEUP);
 	account_entity_enqueue(cfs_rq, se);
 	update_cfs_shares(cfs_rq);
@@ -4835,7 +4820,7 @@ enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 
 	update_stats_enqueue(cfs_rq, se, !!(flags & ENQUEUE_MIGRATING));
 	check_spread(cfs_rq, se);
-	if (!curr)
+	if (se != cfs_rq->curr)
 		__enqueue_entity(cfs_rq, se);
 	se->on_rq = 1;
 
@@ -7532,13 +7517,6 @@ static int detach_tasks(struct lb_env *env)
 
 redo:
 	while (!list_empty(tasks)) {
-		/*
-		 * We don't want to steal all, otherwise we may be treated likewise,
-		 * which could at worst lead to a livelock crash.
-		 */
-		if (env->idle != CPU_NOT_IDLE && env->src_rq->nr_running <= 1)
-			break;
-
 		p = list_first_entry(tasks, struct task_struct, se.group_node);
 
 		env->loop++;
@@ -9092,24 +9070,7 @@ more_balance:
 		/* All tasks on this runqueue were pinned by CPU affinity */
 		if (unlikely(env.flags & LBF_ALL_PINNED)) {
 			cpumask_clear_cpu(cpu_of(busiest), cpus);
-			/*
-			 * dst_cpu is not a valid busiest cpu in the following
-			 * check since load cannot be pulled from dst_cpu to be
-			 * put on dst_cpu.
-			 */
-			cpumask_clear_cpu(env.dst_cpu, cpus);
-			/*
-			 * Go back to "redo" iff the load-balance cpumask
-			 * contains other potential busiest cpus for the
-			 * current sched domain.
-			 */
-			if (cpumask_intersects(cpus, sched_domain_span(env.sd))) {
-				/*
-				 * Now that the check has passed, reenable
-				 * dst_cpu so that load can be calculated on
-				 * it in the redo path.
-				 */
-				cpumask_set_cpu(env.dst_cpu, cpus);
+			if (!cpumask_empty(cpus)) {
 				env.loop = 0;
 				env.loop_break = sched_nr_migrate_break;
 				goto redo;

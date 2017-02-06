@@ -67,6 +67,39 @@ void clear_app_setting_bit(uint32_t bit)
 }
 EXPORT_SYMBOL(clear_app_setting_bit);
 
+void set_app_setting_bit_for_32bit_apps(void)
+{
+	unsigned long flags;
+	uint64_t reg;
+
+	spin_lock_irqsave(&spinlock_32bit_app, flags);
+	asm volatile("mrs %0, S3_0_c15_c15_1 " : "=r" (reg));
+	reg = reg | BIT(18);
+	reg = reg & ~BIT(2);
+	reg = reg | 0x3;
+	isb();
+	asm volatile("msr S3_0_c15_c15_1, %0" : : "r" (reg));
+	isb();
+	spin_unlock_irqrestore(&spinlock_32bit_app, flags);
+}
+EXPORT_SYMBOL(set_app_setting_bit_for_32bit_apps);
+
+void clear_app_setting_bit_for_32bit_apps(void)
+{
+	unsigned long flags;
+	uint64_t reg;
+
+	spin_lock_irqsave(&spinlock_32bit_app, flags);
+	asm volatile("mrs %0, S3_0_c15_c15_1 " : "=r" (reg));
+	reg = reg & ~BIT(18);
+	reg = reg & ~0x3;
+	isb();
+	asm volatile("msr S3_0_c15_c15_1, %0" : : "r" (reg));
+	isb();
+	spin_unlock_irqrestore(&spinlock_32bit_app, flags);
+}
+EXPORT_SYMBOL(clear_app_setting_bit_for_32bit_apps);
+
 static int __init init_app_api(void)
 {
 	spin_lock_init(&spinlock);

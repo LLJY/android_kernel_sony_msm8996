@@ -537,6 +537,8 @@ _binder_dequeue_work(struct binder_work *work, int line)
 		     "%s: line=%d last_line=%d\n", __func__,
 		     line, work->last_line);
 	list_del_init(&work->entry);
+	/* Add barrier to ensure list delete is seen */
+	smp_mb();
 	work->wlist = NULL;
 	work->last_line = -line;
 }
@@ -551,6 +553,8 @@ binder_dequeue_work(struct binder_work *work, int line)
 		 * if the associated node is being
 		 * released
 		 */
+		/* Add barrier to ensure list delete happened */
+		smp_mb();
 		return;
 	}
 	spin_lock(&wlist->lock);

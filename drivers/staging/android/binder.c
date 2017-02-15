@@ -2807,13 +2807,10 @@ retry:
 
 	if (wait_for_proc_work)
 		atomic_dec(&proc->ready_threads);
-	thread->looper &= ~BINDER_LOOPER_STATE_WAITING;
 
 	if (ret)
 		return ret;
-
-	binder_serialize_threads(proc);
-
+	thread->looper &= ~BINDER_LOOPER_STATE_WAITING;
 	while (1) {
 		uint32_t cmd;
 		struct binder_transaction_data tr;

@@ -19,7 +19,8 @@
 
 &mdss_mdp {
 	dsi_jdi_synaptics_cmd_6: somc,jdi_synaptics_cmd_6_panel {
-		qcom,mdss-dsi-panel-name = "6";
+		qcom,mdss-dsi-panel-name = "6 jdi 1080p cmd mode dsi panel";
+		qcom,mdss-dsi-panel-manufacture = "JDI";
 		qcom,mdss-dsi-panel-type = "dsi_cmd_mode";
 		qcom,mdss-dsi-panel-width = <1080>;
 		qcom,mdss-dsi-panel-height = <1920>;
@@ -89,6 +90,8 @@
 		qcom,mdss-dsi-t-clk-pre = <0x2B>;
 		qcom,panel-supply-entries = <&dsi_panel_pwr_supply_hybrid_incell>;
 		qcom,mdss-dsi-lp11-init;
+		qcom,partial-update-enabled;
+		qcom,ulps-enabled;
 		qcom,mdss-dsi-bl-min-level = <1>;
 		qcom,mdss-dsi-bl-max-level = <4095>;
 		qcom,mdss-brightness-max-level = <4095>;
@@ -389,7 +392,8 @@
 	};
 
 	dsi_sharp_synaptics_cmd_9: somc,sharp_synaptics_cmd_9_panel {
-		qcom,mdss-dsi-panel-name = "9";
+		qcom,mdss-dsi-panel-name = "9 sharp 1080p cmd mode dsi panel";
+		qcom,mdss-dsi-panel-manufacture = "Sharp";
 		qcom,mdss-dsi-panel-type = "dsi_cmd_mode";
 		qcom,mdss-dsi-panel-width = <1080>;
 		qcom,mdss-dsi-panel-height = <1920>;
@@ -444,6 +448,8 @@
 		qcom,mdss-dsi-t-clk-pre = <0x2B>;
 		qcom,panel-supply-entries = <&dsi_panel_pwr_supply_full_incell>;
 		qcom,mdss-dsi-lp11-init;
+		qcom,partial-update-enabled;
+		qcom,ulps-enabled;
 		qcom,mdss-dsi-bl-min-level = <1>;
 		qcom,mdss-dsi-bl-max-level = <4095>;
 		qcom,mdss-brightness-max-level = <4095>;

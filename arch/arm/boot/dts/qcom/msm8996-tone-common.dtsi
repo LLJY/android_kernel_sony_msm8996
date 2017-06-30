@@ -235,7 +235,7 @@
 			preset_y_max = <1919>;
 			preset_n_fingers = <10>;
 			wakeup_gesture_supported = <1>;
-			wakeup_gesture_lpm_disabled = <1>;
+			wakeup_gesture_lpm_disabled = <0>;
 			wakeup_gesture_timeout = <0>;
 			wakeup_gesture {
 				double_tap {
@@ -262,16 +262,16 @@
 			/* chip settings */
 			clearpad_default {
 				flash_default_timeout_ms = <20000>;
-				calibrate_on_fwflash = <0>;
-				calibration_supported = <0>;
+				calibrate_on_fwflash = <1>;
+				calibration_supported = <1>;
 				hwreset_delay_for_powerup_ms = <220>;
 				interrupt_default_wait_ms = <1000>;
 				charger_only_delay_ms = <200>;
 			};
 			S3330 {
 				flash_default_timeout_ms = <20000>;
-				calibrate_on_fwflash = <0>;
-				calibration_supported = <0>;
+				calibrate_on_fwflash = <1>;
+				calibration_supported = <1>;
 				hwreset_delay_for_powerup_ms = <220>;
 				interrupt_default_wait_ms = <1000>;
 				charger_only_delay_ms = <200>;
@@ -963,9 +963,9 @@
 		has_super_slow = <0>;
 		has_sub_sensor = <0>;
 		has_aube = <0>;
-		has_flicker_detector = <0>;
-		has_hdr = <0>;
-		has_seamless_mode_change = <0>;
+		has_flicker_detector = <1>;
+		has_hdr = <1>;
+		has_seamless_mode_change = <1>;
 		pdaf_free_area_num = <0>;
 		pdaf_fixed_area_size_w = <0>;
 		pdaf_fixed_area_size_h = <0>;
@@ -1046,9 +1046,9 @@
 		has_super_slow = <0>;
 		has_sub_sensor = <0>;
 		has_aube = <0>;
-		has_flicker_detector = <0>;
-		has_hdr = <0>;
-		has_seamless_mode_change = <0>;
+		has_flicker_detector = <1>;
+		has_hdr = <1>;
+		has_seamless_mode_change = <1>;
 		pdaf_free_area_num = <0>;
 		pdaf_fixed_area_size_w = <0>;
 		pdaf_fixed_area_size_h = <0>;
@@ -1129,9 +1129,9 @@
 		has_super_slow = <0>;
 		has_sub_sensor = <0>;
 		has_aube = <0>;
-		has_flicker_detector = <0>;
-		has_hdr = <0>;
-		has_seamless_mode_change = <0>;
+		has_flicker_detector = <1>;
+		has_hdr = <1>;
+		has_seamless_mode_change = <1>;
 		pdaf_free_area_num = <0>;
 		pdaf_fixed_area_size_w = <0>;
 		pdaf_fixed_area_size_h = <0>;

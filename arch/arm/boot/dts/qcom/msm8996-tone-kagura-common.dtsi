@@ -54,7 +54,7 @@
 			pinctrl-0 = <&msm_gpio_85>;
 			pinctrl-1 = <&msm_gpio_85_suspend>;
 			sony,tof-sensor-name = "VL53L0";
-			sony,tof-need-cam-on = <1>;
+			sony,tof-need-cam-on = <0>;
 			sony,tof-sensor-facing = <0>;
 		};
 	};
@@ -72,7 +72,7 @@
 
 			/* chip settings */
 			S332U {
-				calibrate_on_fwflash = <0>;
+				calibrate_on_fwflash = <1>;
 			};
 		};
 	};
@@ -219,9 +219,9 @@
 		has_super_slow = <0>;
 		has_sub_sensor = <0>;
 		has_aube = <0>;
-		has_flicker_detector = <0>;
-		has_hdr = <0>;
-		has_seamless_mode_change = <0>;
+		has_flicker_detector = <1>;
+		has_hdr = <1>;
+		has_seamless_mode_change = <1>;
 		pdaf_free_area_num = <8>;
 		pdaf_fixed_area_size_w = <16>;
 		pdaf_fixed_area_size_h = <12>;
@@ -304,9 +304,9 @@
 		has_super_slow = <0>;
 		has_sub_sensor = <0>;
 		has_aube = <0>;
-		has_flicker_detector = <0>;
-		has_hdr = <0>;
-		has_seamless_mode_change = <0>;
+		has_flicker_detector = <1>;
+		has_hdr = <1>;
+		has_seamless_mode_change = <1>;
 		pdaf_free_area_num = <8>;
 		pdaf_fixed_area_size_w = <16>;
 		pdaf_fixed_area_size_h = <12>;
@@ -395,9 +395,9 @@
 		has_super_slow = <0>;
 		has_sub_sensor = <0>;
 		has_aube = <0>;
-		has_flicker_detector = <0>;
-		has_hdr = <0>;
-		has_seamless_mode_change = <0>;
+		has_flicker_detector = <1>;
+		has_hdr = <1>;
+		has_seamless_mode_change = <1>;
 		pdaf_free_area_num = <0>;
 		pdaf_fixed_area_size_w = <0>;
 		pdaf_fixed_area_size_h = <0>;
@@ -478,9 +478,9 @@
 		has_super_slow = <0>;
 		has_sub_sensor = <0>;
 		has_aube = <0>;
-		has_flicker_detector = <0>;
-		has_hdr = <0>;
-		has_seamless_mode_change = <0>;
+		has_flicker_detector = <1>;
+		has_hdr = <1>;
+		has_seamless_mode_change = <1>;
 		pdaf_free_area_num = <0>;
 		pdaf_fixed_area_size_w = <0>;
 		pdaf_fixed_area_size_h = <0>;
@@ -561,9 +561,9 @@
 		has_super_slow = <0>;
 		has_sub_sensor = <0>;
 		has_aube = <0>;
-		has_flicker_detector = <0>;
-		has_hdr = <0>;
-		has_seamless_mode_change = <0>;
+		has_flicker_detector = <1>;
+		has_hdr = <1>;
+		has_seamless_mode_change = <1>;
 		pdaf_free_area_num = <0>;
 		pdaf_fixed_area_size_w = <0>;
 		pdaf_fixed_area_size_h = <0>;
@@ -672,7 +672,7 @@
 	somc,limit-usb-5v-level = <8>;
 	qcom,external-typec;
 	qcom,typec-psy-name = "typec";
-	somc,typec-current-max = <2500>;
+	somc,typec-current-max = <3000>;
 	somc,id-polling-enabled;
 };
 

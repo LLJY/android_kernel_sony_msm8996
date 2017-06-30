@@ -90,7 +90,6 @@
 		qcom,mdss-dsi-t-clk-pre = <0x2B>;
 		qcom,panel-supply-entries = <&dsi_panel_pwr_supply_hybrid_incell>;
 		qcom,mdss-dsi-lp11-init;
-		qcom,partial-update-enabled;
 		qcom,ulps-enabled;
 		qcom,mdss-dsi-bl-min-level = <1>;
 		qcom,mdss-dsi-bl-max-level = <4095>;
@@ -448,7 +447,6 @@
 		qcom,mdss-dsi-t-clk-pre = <0x2B>;
 		qcom,panel-supply-entries = <&dsi_panel_pwr_supply_full_incell>;
 		qcom,mdss-dsi-lp11-init;
-		qcom,partial-update-enabled;
 		qcom,ulps-enabled;
 		qcom,mdss-dsi-bl-min-level = <1>;
 		qcom,mdss-dsi-bl-max-level = <4095>;

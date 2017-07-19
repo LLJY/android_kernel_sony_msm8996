@@ -19,11 +19,6 @@
  *  Adaptive scheduling granularity, math enhancements by Peter Zijlstra
  *  Copyright (C) 2007 Red Hat, Inc., Peter Zijlstra <pzijlstr@redhat.com>
  */
-/*
- * NOTE: This file has been modified by Sony Mobile Communications Inc.
- * Modifications are Copyright (c) 2015 Sony Mobile Communications Inc,
- * and licensed under the license of the file.
- */
 
 #include <linux/latencytop.h>
 #include <linux/sched.h>
@@ -2381,7 +2376,7 @@ unsigned int __read_mostly sysctl_sched_big_waker_task_load_pct = 25;
  * task. This eliminates the LPM exit latency associated with the idle
  * CPUs in the waker cluster.
  */
-unsigned int __read_mostly sysctl_sched_prefer_sync_wakee_to_waker = 1;
+unsigned int __read_mostly sysctl_sched_prefer_sync_wakee_to_waker;
 
 /*
  * CPUs with load greater than the sched_spill_load_threshold are not
@@ -2584,24 +2579,11 @@ static DEFINE_MUTEX(boost_mutex);
 
 static void boost_kick_cpus(void)
 {
-	u32 nr_running;
 	int i;
 
 	for_each_online_cpu(i) {
-		/*
-		 * kick only "small" cluster
-		 */
-		if (cpu_capacity(i) != max_capacity) {
-			nr_running = ACCESS_ONCE(cpu_rq(i)->nr_running);
-
-			/*
-			 * make sense to interrupt CPU if its runqueue
-			 * has something running in order to check for
-			 * migration afterwards, otherwise skip it.
-			 */
-			if (nr_running)
-				boost_kick(i);
-		}
+		if (cpu_capacity(i) != max_capacity)
+			boost_kick(i);
 	}
 }
 
@@ -3275,10 +3257,11 @@ bias_to_prev_cpu(struct cpu_select_env *env, struct cluster_cpu_stats *stats)
 }
 
 static inline bool
-wake_to_waker_cluster(struct cpu_select_env *env, int this_cpu)
+wake_to_waker_cluster(struct cpu_select_env *env)
 {
 	return !env->need_idle && !env->reason && env->sync &&
-		task_will_fit(env->p, this_cpu);
+	       task_load(current) > sched_big_waker_task_load &&
+	       task_load(env->p) < sched_small_wakee_task_load;
 }
 
 static inline int
@@ -3332,7 +3315,7 @@ static int select_best_cpu(struct task_struct *p, int target, int reason,
 			env.rtg = grp;
 	} else {
 		cluster = cpu_rq(cpu)->cluster;
-		if (wake_to_waker_cluster(&env, cpu)) {
+		if (wake_to_waker_cluster(&env)) {
 			if (sysctl_sched_prefer_sync_wakee_to_waker &&
 				cpu_rq(cpu)->nr_running == 1 &&
 				cpumask_test_cpu(cpu, tsk_cpus_allowed(p)) &&
@@ -4805,25 +4788,17 @@ static void check_enqueue_throttle(struct cfs_rq *cfs_rq);
 static void
 enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 {
-	bool renorm = !(flags & ENQUEUE_WAKEUP) || (flags & ENQUEUE_WAKING);
-	bool curr = cfs_rq->curr == se;
-
 	/*
-	 * If we're the current task, we must renormalise before calling
-	 * update_curr().
+	 * Update the normalized vruntime before updating min_vruntime
+	 * through calling update_curr().
 	 */
-	if (renorm && curr)
+	if (!(flags & ENQUEUE_WAKEUP) || (flags & ENQUEUE_WAKING))
 		se->vruntime += cfs_rq->min_vruntime;
 
+	/*
+	 * Update run-time statistics of the 'current'.
+	 */
 	update_curr(cfs_rq);
-
-	/*
-	 * Otherwise, renormalise after, such that we're placed at the current
-	 * moment in time, instead of some random moment in the past.
-	 */
-	if (renorm && !curr)
-		se->vruntime += cfs_rq->min_vruntime;
-
 	enqueue_entity_load_avg(cfs_rq, se, flags & ENQUEUE_WAKEUP);
 	account_entity_enqueue(cfs_rq, se);
 	update_cfs_shares(cfs_rq);
@@ -4835,7 +4810,7 @@ enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 
 	update_stats_enqueue(cfs_rq, se, !!(flags & ENQUEUE_MIGRATING));
 	check_spread(cfs_rq, se);
-	if (!curr)
+	if (se != cfs_rq->curr)
 		__enqueue_entity(cfs_rq, se);
 	se->on_rq = 1;
 
@@ -7532,13 +7507,6 @@ static int detach_tasks(struct lb_env *env)
 
 redo:
 	while (!list_empty(tasks)) {
-		/*
-		 * We don't want to steal all, otherwise we may be treated likewise,
-		 * which could at worst lead to a livelock crash.
-		 */
-		if (env->idle != CPU_NOT_IDLE && env->src_rq->nr_running <= 1)
-			break;
-
 		p = list_first_entry(tasks, struct task_struct, se.group_node);
 
 		env->loop++;
@@ -9092,24 +9060,7 @@ more_balance:
 		/* All tasks on this runqueue were pinned by CPU affinity */
 		if (unlikely(env.flags & LBF_ALL_PINNED)) {
 			cpumask_clear_cpu(cpu_of(busiest), cpus);
-			/*
-			 * dst_cpu is not a valid busiest cpu in the following
-			 * check since load cannot be pulled from dst_cpu to be
-			 * put on dst_cpu.
-			 */
-			cpumask_clear_cpu(env.dst_cpu, cpus);
-			/*
-			 * Go back to "redo" iff the load-balance cpumask
-			 * contains other potential busiest cpus for the
-			 * current sched domain.
-			 */
-			if (cpumask_intersects(cpus, sched_domain_span(env.sd))) {
-				/*
-				 * Now that the check has passed, reenable
-				 * dst_cpu so that load can be calculated on
-				 * it in the redo path.
-				 */
-				cpumask_set_cpu(env.dst_cpu, cpus);
+			if (!cpumask_empty(cpus)) {
 				env.loop = 0;
 				env.loop_break = sched_nr_migrate_break;
 				goto redo;

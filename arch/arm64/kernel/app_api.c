@@ -18,6 +18,7 @@
 #include <asm/app_api.h>
 
 static spinlock_t spinlock;
+static spinlock_t spinlock_32bit_app;
 static DEFINE_PER_CPU(int, app_config_applied);
 static unsigned long app_config_set[NR_CPUS];
 static unsigned long app_config_clear[NR_CPUS];
@@ -103,6 +104,7 @@ EXPORT_SYMBOL(clear_app_setting_bit_for_32bit_apps);
 static int __init init_app_api(void)
 {
 	spin_lock_init(&spinlock);
+	spin_lock_init(&spinlock_32bit_app);
 	return 0;
 }
 early_initcall(init_app_api);

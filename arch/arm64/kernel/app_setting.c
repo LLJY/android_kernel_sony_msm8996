@@ -1,4 +1,4 @@
-/* Copyright (c) 2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2016-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -90,6 +90,17 @@ void switch_app_setting_bit(struct task_struct *prev, struct task_struct *next)
 		set_app_setting_bit(APP_SETTING_BIT);
 }
 EXPORT_SYMBOL(switch_app_setting_bit);
+
+void switch_32bit_app_setting_bit(struct task_struct *prev,
+					struct task_struct *next)
+{
+	if (prev->mm && unlikely(is_compat_thread(task_thread_info(prev))))
+		clear_app_setting_bit_for_32bit_apps();
+
+	if (next->mm && unlikely(is_compat_thread(task_thread_info(next))))
+		set_app_setting_bit_for_32bit_apps();
+}
+EXPORT_SYMBOL(switch_32bit_app_setting_bit);
 
 void apply_app_setting_bit(struct file *file)
 {

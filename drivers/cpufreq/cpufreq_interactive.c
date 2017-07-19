@@ -15,11 +15,6 @@
  * Author: Mike Chan (mike@android.com)
  *
  */
-/*
- * NOTE: This file has been modified by Sony Mobile Communications Inc.
- * Modifications are Copyright (c) 2016 Sony Mobile Communications Inc,
- * and licensed under the license of the file.
- */
 
 #include <linux/cpu.h>
 #include <linux/cpumask.h>
@@ -36,41 +31,9 @@
 #include <linux/workqueue.h>
 #include <linux/kthread.h>
 #include <linux/slab.h>
-#include <linux/display_state.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/cpufreq_interactive.h>
-
-#ifdef CONFIG_SCHED_HMP
-struct cluster {
-	struct list_head list;
-	struct task_struct *speedchange_task;
-	spinlock_t speedchange_cpumask_lock;
-	cpumask_t speedchange_cpumask;
-	cpumask_t cpus;
-	int id;
-};
-
-static LIST_HEAD(cluster_list_head);
-
-#define for_each_cluster(cluster)	\
-	list_for_each_entry(cluster, &cluster_list_head, list)
-
-#define for_each_cluster_safe(cluster, tmp)	\
-	list_for_each_entry_safe(cluster, tmp,	\
-		&cluster_list_head, list)
-
-static void assign_cluster_ids(void)
-{
-	struct cluster *clstr;
-	int pos = 0;
-
-	for_each_cluster(clstr) {
-		clstr->id = pos;
-		pos++;
-	}
-}
-#endif
 
 struct cpufreq_interactive_policyinfo {
 	struct timer_list policy_timer;
@@ -93,14 +56,7 @@ struct cpufreq_interactive_policyinfo {
 	unsigned long notif_cpu;
 	int governor_enabled;
 	struct cpufreq_interactive_tunables *cached_tunables;
-<<<<<<< HEAD
-	struct sched_load *sl;
-#ifdef CONFIG_SCHED_HMP
-	struct cluster *cluster;
-#endif
-=======
 	unsigned long *cpu_busy_times;
->>>>>>> a5ef960... sched: Revert HMP and some MSM specific features
 };
 
 /* Protected by per-policy load_lock */
@@ -115,29 +71,18 @@ struct cpufreq_interactive_cpuinfo {
 static DEFINE_PER_CPU(struct cpufreq_interactive_policyinfo *, polinfo);
 static DEFINE_PER_CPU(struct cpufreq_interactive_cpuinfo, cpuinfo);
 
-#ifndef CONFIG_SCHED_HMP
 /* realtime thread handles frequency scaling */
 static struct task_struct *speedchange_task;
 static cpumask_t speedchange_cpumask;
 static spinlock_t speedchange_cpumask_lock;
-<<<<<<< HEAD
-#endif
-
-static int set_window_count;
-static int migration_register_count;
-static struct mutex sched_lock;
-=======
 static struct mutex gov_lock;
->>>>>>> a5ef960... sched: Revert HMP and some MSM specific features
 static cpumask_t controlled_cpus;
-static struct mutex gov_lock;
 
 /* Target load.  Lower values result in higher CPU speeds. */
 #define DEFAULT_TARGET_LOAD 90
 static unsigned int default_target_loads[] = {DEFAULT_TARGET_LOAD};
 
 #define DEFAULT_TIMER_RATE (20 * USEC_PER_MSEC)
-#define SCREEN_OFF_TIMER_RATE ((unsigned long)(60 * USEC_PER_MSEC))
 #define DEFAULT_ABOVE_HISPEED_DELAY DEFAULT_TIMER_RATE
 static unsigned int default_above_hispeed_delay[] = {
 	DEFAULT_ABOVE_HISPEED_DELAY };
@@ -163,7 +108,6 @@ struct cpufreq_interactive_tunables {
 	 * The sample rate of the timer used to increase frequency
 	 */
 	unsigned long timer_rate;
-	unsigned long prev_timer_rate;
 	/*
 	 * Wait this long before raising speed above hispeed, by default a
 	 * single timer interval.
@@ -211,13 +155,6 @@ struct cpufreq_interactive_tunables {
 
 	/* Whether to enable prediction or not */
 	bool enable_prediction;
-
-	/* Improves frequency selection for more energy */
-	bool powersave_bias;
-
-	/* Maximum frequency while the screen is off */
-#define DEFAULT_SCREEN_OFF_MAX 1286400
-	unsigned long screen_off_max;
 };
 
 /* For cases where we have single governor instance for system */
@@ -477,13 +414,13 @@ static u64 update_load(int cpu)
 		ppol->policy->governor_data;
 	u64 now;
 	u64 now_idle;
-	u64 delta_idle;
-	u64 delta_time;
+	unsigned int delta_idle;
+	unsigned int delta_time;
 	u64 active_time;
 
 	now_idle = get_cpu_idle_time(cpu, &now, tunables->io_is_busy);
-	delta_idle = (now_idle - pcpu->time_in_idle);
-	delta_time = (now - pcpu->time_in_idle_timestamp);
+	delta_idle = (unsigned int)(now_idle - pcpu->time_in_idle);
+	delta_time = (unsigned int)(now - pcpu->time_in_idle_timestamp);
 
 	if (delta_time <= delta_idle)
 		active_time = 0;
@@ -515,45 +452,17 @@ static void __cpufreq_interactive_timer(unsigned long data, bool is_notif)
 	unsigned long max_cpu;
 	int i, fcpu;
 	struct cpufreq_govinfo govinfo;
-<<<<<<< HEAD
-	bool skip_hispeed_logic, skip_min_sample_time;
-	bool jump_to_max_no_ts = false;
-	bool jump_to_max = false;
-	bool display_on = is_display_on();
-#ifdef CONFIG_SCHED_HMP
-	struct cluster *clstr;
-#endif
-=======
->>>>>>> a5ef960... sched: Revert HMP and some MSM specific features
 
 	if (!down_read_trylock(&ppol->enable_sem))
 		return;
 	if (!ppol->governor_enabled)
 		goto exit;
-	if (ppol->policy->min == ppol->policy->max)
-		goto rearm;
 
 	fcpu = cpumask_first(ppol->policy->related_cpus);
 	now = ktime_to_us(ktime_get());
 	spin_lock_irqsave(&ppol->load_lock, flags);
 	ppol->last_evaluated_jiffy = get_jiffies_64();
 
-<<<<<<< HEAD
-	if (display_on
-		&& tunables->timer_rate != tunables->prev_timer_rate)
-		tunables->timer_rate = tunables->prev_timer_rate;
-	else if (!display_on
-		&& tunables->timer_rate != SCREEN_OFF_TIMER_RATE) {
-		tunables->prev_timer_rate = tunables->timer_rate;
-		tunables->timer_rate
-			= max(tunables->timer_rate,
-				SCREEN_OFF_TIMER_RATE);
-	}
-
-	if (tunables->use_sched_load)
-		sched_get_cpus_busy(sl, ppol->policy->cpus);
-=======
->>>>>>> a5ef960... sched: Revert HMP and some MSM specific features
 	max_cpu = cpumask_first(ppol->policy->cpus);
 	for_each_cpu(i, ppol->policy->cpus) {
 		pcpu = &per_cpu(cpuinfo, i);
@@ -698,21 +607,10 @@ static void __cpufreq_interactive_timer(unsigned long data, bool is_notif)
 
 	ppol->target_freq = new_freq;
 	spin_unlock_irqrestore(&ppol->target_freq_lock, flags);
-
-#ifdef CONFIG_SCHED_HMP
-	clstr = ppol->cluster;
-	if (clstr) {
-		spin_lock_irqsave(&clstr->speedchange_cpumask_lock, flags);
-		cpumask_set_cpu(max_cpu, &clstr->speedchange_cpumask);
-		spin_unlock_irqrestore(&clstr->speedchange_cpumask_lock, flags);
-		wake_up_process_no_notif(clstr->speedchange_task);
-	}
-#else
 	spin_lock_irqsave(&speedchange_cpumask_lock, flags);
 	cpumask_set_cpu(max_cpu, &speedchange_cpumask);
 	spin_unlock_irqrestore(&speedchange_cpumask_lock, flags);
 	wake_up_process_no_notif(speedchange_task);
-#endif
 
 rearm:
 	if (!timer_pending(&ppol->policy_timer))
@@ -723,98 +621,17 @@ exit:
 	return;
 }
 
-<<<<<<< HEAD
-#ifdef CONFIG_SCHED_HMP
-static void update_cpus_freq_in_mask(cpumask_t *mask)
-{
-	struct cpufreq_interactive_policyinfo *ppol;
-	unsigned int cpu;
-
-	for_each_cpu(cpu, mask) {
-		ppol = per_cpu(polinfo, cpu);
-		if (!down_read_trylock(&ppol->enable_sem))
-			continue;
-
-		if (!ppol->governor_enabled) {
-			up_read(&ppol->enable_sem);
-			continue;
-		}
-
-		if (ppol->target_freq != ppol->policy->cur) {
-			trace_cpufreq_interactive_setspeed(cpu,
-				     ppol->target_freq,
-				     ppol->policy->cur);
-			__cpufreq_driver_target(ppol->policy,
-					ppol->target_freq,
-					CPUFREQ_RELATION_H);
-		}
-
-		up_read(&ppol->enable_sem);
-	}
-}
-
-static int speed_change_task_hmp(void *data)
-{
-	struct cluster *clstr = (struct cluster *) data;
-	cpumask_t tmp_mask;
-	unsigned long flags;
-
-	while (1) {
-		set_current_state(TASK_INTERRUPTIBLE);
-		spin_lock_irqsave(&clstr->speedchange_cpumask_lock, flags);
-
-		if (cpumask_empty(&clstr->speedchange_cpumask)) {
-			spin_unlock_irqrestore(
-				&clstr->speedchange_cpumask_lock, flags);
-			schedule();
-
-			if (kthread_should_stop())
-				break;
-
-			spin_lock_irqsave(
-				&clstr->speedchange_cpumask_lock, flags);
-		}
-
-		set_current_state(TASK_RUNNING);
-		tmp_mask = clstr->speedchange_cpumask;
-		cpumask_clear(&clstr->speedchange_cpumask);
-		spin_unlock_irqrestore(
-			&clstr->speedchange_cpumask_lock, flags);
-
-		/*
-		 * Recover if we are on a wrong CPU. It might happen
-		 * because of hot-plug functionality. Affinity mask of
-		 * the process is changed, when there are no any online
-		 * CPU in tsk_cpus_allowed(p).
-		 */
-		if (!cpumask_test_cpu(smp_processor_id(), &clstr->cpus)) {
-			pr_info("change affinity mask on %d CPU, cluster id is %d\n",
-				   smp_processor_id(), clstr->id);
-
-			set_cpus_allowed(current, clstr->cpus);
-		}
-
-		update_cpus_freq_in_mask(&tmp_mask);
-	}
-
-	return 0;
-}
-#else
-=======
 static void cpufreq_interactive_timer(unsigned long data)
 {
 	__cpufreq_interactive_timer(data, false);
 }
 
->>>>>>> 6c1be1f... Fixing compilation errors in cpufreq_interactive.c due to EAS merge on to the default android-msm-marlin-3.18.
 static int cpufreq_interactive_speedchange_task(void *data)
 {
 	unsigned int cpu;
 	cpumask_t tmp_mask;
 	unsigned long flags;
 	struct cpufreq_interactive_policyinfo *ppol;
-	struct cpufreq_interactive_tunables *tunables;
-	bool display_on = is_display_on();
 
 	while (1) {
 		set_current_state(TASK_INTERRUPTIBLE);
@@ -838,7 +655,6 @@ static int cpufreq_interactive_speedchange_task(void *data)
 
 		for_each_cpu(cpu, &tmp_mask) {
 			ppol = per_cpu(polinfo, cpu);
-			tunables = ppol->policy->governor_data;
 			if (!down_read_trylock(&ppol->enable_sem))
 				continue;
 			if (!ppol->governor_enabled) {
@@ -846,21 +662,10 @@ static int cpufreq_interactive_speedchange_task(void *data)
 				continue;
 			}
 
-			if (unlikely(!display_on)) {
-			    if (ppol->target_freq > tunables->screen_off_max)
-				ppol->target_freq = tunables->screen_off_max;
-			}
-
-			if (ppol->target_freq != ppol->policy->cur) {
-			    if (tunables->powersave_bias || !display_on)
-				    __cpufreq_driver_target(ppol->policy,
-							    ppol->target_freq,
-							    CPUFREQ_RELATION_C);
-			    else
-				    __cpufreq_driver_target(ppol->policy,
-							    ppol->target_freq,
-							    CPUFREQ_RELATION_H);
-			}
+			if (ppol->target_freq != ppol->policy->cur)
+				__cpufreq_driver_target(ppol->policy,
+							ppol->target_freq,
+							CPUFREQ_RELATION_H);
 			trace_cpufreq_interactive_setspeed(cpu,
 						     ppol->target_freq,
 						     ppol->policy->cur);
@@ -870,60 +675,16 @@ static int cpufreq_interactive_speedchange_task(void *data)
 
 	return 0;
 }
-#endif	/* CONFIG_SCHED_HMP */
 
 static void cpufreq_interactive_boost(struct cpufreq_interactive_tunables *tunables)
 {
-#ifdef CONFIG_SCHED_HMP
-	struct cluster *clstr;
-#else
 	int i;
-#endif
 	int anyboost = 0;
 	unsigned long flags[2];
 	struct cpufreq_interactive_policyinfo *ppol;
 
 	tunables->boosted = true;
 
-#ifdef CONFIG_SCHED_HMP
-	for_each_cluster(clstr) {
-		cpumask_t cluster_online_cpus = CPU_MASK_NONE;
-		int cfcpu;
-
-		cpumask_and(&cluster_online_cpus, &clstr->cpus, cpu_online_mask);
-		cfcpu = cpumask_first(&cluster_online_cpus);
-		anyboost = 0;
-
-		ppol = per_cpu(polinfo, cfcpu);
-		if (!ppol || tunables != ppol->policy->governor_data)
-			continue;
-
-		spin_lock_irqsave(&clstr->speedchange_cpumask_lock, flags[0]);
-		spin_lock(&ppol->target_freq_lock);
-
-		if (ppol->target_freq < tunables->hispeed_freq) {
-			ppol->target_freq = tunables->hispeed_freq;
-			cpumask_set_cpu(cfcpu, &clstr->speedchange_cpumask);
-			ppol->hispeed_validate_time =
-				ktime_to_us(ktime_get());
-			anyboost = 1;
-		}
-
-		/*
-		 * Set floor freq and (re)start timer for when last
-		 * validated.
-		 */
-
-		ppol->floor_freq = tunables->hispeed_freq;
-		ppol->floor_validate_time = ktime_to_us(ktime_get());
-
-		spin_unlock(&ppol->target_freq_lock);
-		spin_unlock_irqrestore(&clstr->speedchange_cpumask_lock, flags[0]);
-
-		if (anyboost)
-			wake_up_process_no_notif(clstr->speedchange_task);
-	}
-#else
 	spin_lock_irqsave(&speedchange_cpumask_lock, flags[0]);
 
 	for_each_online_cpu(i) {
@@ -955,7 +716,6 @@ static void cpufreq_interactive_boost(struct cpufreq_interactive_tunables *tunab
 
 	if (anyboost)
 		wake_up_process_no_notif(speedchange_task);
-#endif
 }
 
 int load_change_callback(struct notifier_block *nb, unsigned long val,
@@ -1021,7 +781,7 @@ static int cpufreq_interactive_notifier(
 	int cpu;
 	unsigned long flags;
 
-	if (val == CPUFREQ_PRECHANGE) {
+	if (val == CPUFREQ_POSTCHANGE) {
 		ppol = per_cpu(polinfo, freq->cpu);
 		if (!ppol)
 			return 0;
@@ -1282,7 +1042,6 @@ static ssize_t store_timer_rate(struct cpufreq_interactive_tunables *tunables,
 		pr_warn("timer_rate not aligned to jiffy. Rounded up to %lu\n",
 			val_round);
 	tunables->timer_rate = val_round;
-	tunables->prev_timer_rate = val_round;
 
 	if (!tunables->use_sched_load)
 		return count;
@@ -1291,10 +1050,8 @@ static ssize_t store_timer_rate(struct cpufreq_interactive_tunables *tunables,
 		if (!per_cpu(polinfo, cpu))
 			continue;
 		t = per_cpu(polinfo, cpu)->cached_tunables;
-		if (t && t->use_sched_load) {
+		if (t && t->use_sched_load)
 			t->timer_rate = val_round;
-			t->prev_timer_rate = val_round;
-		}
 	}
 	set_window_helper(tunables);
 
@@ -1330,7 +1087,7 @@ static ssize_t show_boost(struct cpufreq_interactive_tunables *tunables,
 static ssize_t store_boost(struct cpufreq_interactive_tunables *tunables,
 			   const char *buf, size_t count)
 {
-/*	int ret;
+	int ret;
 	unsigned long val;
 
 	ret = kstrtoul(buf, 0, &val);
@@ -1347,7 +1104,7 @@ static ssize_t store_boost(struct cpufreq_interactive_tunables *tunables,
 		tunables->boostpulse_endtime = ktime_to_us(ktime_get());
 		trace_cpufreq_interactive_unboost("off");
 	}
-*/
+
 	return count;
 }
 
@@ -1483,51 +1240,6 @@ static ssize_t store_use_migration_notif(
 	return -ENODEV;
 }
 
-static ssize_t show_powersave_bias(struct cpufreq_interactive_tunables *tunables,
-		char *buf)
-{
-	return sprintf(buf, "%u\n", tunables->powersave_bias);
-}
-
-static ssize_t store_powersave_bias(struct cpufreq_interactive_tunables *tunables,
-		const char *buf, size_t count)
-{
-	int ret;
-	unsigned long val;
-
-	ret = kstrtoul(buf, 0, &val);
-	if (ret < 0)
-		return ret;
-	tunables->powersave_bias = val;
-	return count;
-}
-
-static ssize_t show_screen_off_maxfreq(
-		struct cpufreq_interactive_tunables *tunables,
-                char *buf)
-{
-	return sprintf(buf, "%lu\n", tunables->screen_off_max);
-}
-
-static ssize_t store_screen_off_maxfreq(
-		struct cpufreq_interactive_tunables *tunables,
-                const char *buf, size_t count)
-{
-	int ret;
-	unsigned long val;
-
-	ret = kstrtoul(buf, 0, &val);
-	if (ret < 0)
-		return ret;
-
-	if (val < 384000)
-		tunables->screen_off_max = DEFAULT_SCREEN_OFF_MAX;
-	else
-		tunables->screen_off_max = val;
-
-	return count;
-}
-
 /*
  * Create show/store routines
  * - sys: One governor instance for complete SYSTEM
@@ -1582,8 +1294,6 @@ show_store_gov_pol_sys(align_windows);
 show_store_gov_pol_sys(ignore_hispeed_on_notif);
 show_store_gov_pol_sys(fast_ramp_down);
 show_store_gov_pol_sys(enable_prediction);
-show_store_gov_pol_sys(powersave_bias);
-show_store_gov_pol_sys(screen_off_maxfreq);
 
 #define gov_sys_attr_rw(_name)						\
 static struct global_attr _name##_gov_sys =				\
@@ -1614,8 +1324,6 @@ gov_sys_pol_attr_rw(align_windows);
 gov_sys_pol_attr_rw(ignore_hispeed_on_notif);
 gov_sys_pol_attr_rw(fast_ramp_down);
 gov_sys_pol_attr_rw(enable_prediction);
-gov_sys_pol_attr_rw(powersave_bias);
-gov_sys_pol_attr_rw(screen_off_maxfreq);
 
 static struct global_attr boostpulse_gov_sys =
 	__ATTR(boostpulse, 0200, NULL, store_boostpulse_gov_sys);
@@ -1643,8 +1351,6 @@ static struct attribute *interactive_attributes_gov_sys[] = {
 	&ignore_hispeed_on_notif_gov_sys.attr,
 	&fast_ramp_down_gov_sys.attr,
 	&enable_prediction_gov_sys.attr,
-	&powersave_bias_gov_sys.attr,
-	&screen_off_maxfreq_gov_sys.attr,
 	NULL,
 };
 
@@ -1673,8 +1379,6 @@ static struct attribute *interactive_attributes_gov_pol[] = {
 	&ignore_hispeed_on_notif_gov_pol.attr,
 	&fast_ramp_down_gov_pol.attr,
 	&enable_prediction_gov_pol.attr,
-	&powersave_bias_gov_pol.attr,
-	&screen_off_maxfreq_gov_pol.attr,
 	NULL,
 };
 
@@ -1712,10 +1416,8 @@ static struct cpufreq_interactive_tunables *alloc_tunable(
 	tunables->ntarget_loads = ARRAY_SIZE(default_target_loads);
 	tunables->min_sample_time = DEFAULT_MIN_SAMPLE_TIME;
 	tunables->timer_rate = DEFAULT_TIMER_RATE;
-	tunables->prev_timer_rate = DEFAULT_TIMER_RATE;
 	tunables->boostpulse_duration_val = DEFAULT_MIN_SAMPLE_TIME;
 	tunables->timer_slack_val = DEFAULT_TIMER_SLACK;
-	tunables->screen_off_max = DEFAULT_SCREEN_OFF_MAX;
 
 	spin_lock_init(&tunables->target_loads_lock);
 	spin_lock_init(&tunables->above_hispeed_delay_lock);
@@ -1787,88 +1489,6 @@ static struct cpufreq_interactive_tunables *get_tunables(
 	else
 		return cached_common_tunables;
 }
-
-#ifdef CONFIG_SCHED_HMP
-static int hmp_register_cluster(cpumask_t *assign_mask)
-{
-	struct cpufreq_interactive_policyinfo *ppol;
-	struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
-	struct cluster *clstr;
-	int i;
-
-	/*
-	 * check if already exists or not
-	 */
-	for_each_cluster(clstr) {
-		if (cpumask_intersects(assign_mask, &clstr->cpus))
-			goto leave;
-	}
-
-	clstr = kzalloc(sizeof(*clstr), GFP_KERNEL);
-	if (!clstr)
-		return -ENOMEM;
-
-	/*
-	 * set cluster's mask cpus it is responsible for
-	 */
-	cpumask_copy(&clstr->cpus, assign_mask);
-	spin_lock_init(&clstr->speedchange_cpumask_lock);
-
-	for_each_cpu(i, assign_mask) {
-		ppol = per_cpu(polinfo, i);
-		ppol->cluster = clstr;
-	}
-
-	clstr->speedchange_cpumask = CPU_MASK_NONE;
-	clstr->speedchange_task = kthread_create(speed_change_task_hmp,
-		clstr, "cfinteractive");
-
-	if (IS_ERR(clstr->speedchange_task))
-		return PTR_ERR(clstr->speedchange_task);
-
-	sched_setscheduler_nocheck(clstr->speedchange_task,
-		SCHED_FIFO, &param);
-	get_task_struct(clstr->speedchange_task);
-
-	/*
-	 * add our new cluster to the list
-	 */
-	INIT_LIST_HEAD(&clstr->list);
-	list_add_tail(&clstr->list, &cluster_list_head);
-	assign_cluster_ids();
-
-	wake_up_process_no_notif(clstr->speedchange_task);
-
-	pr_info("-> added cluster_%d with %d CPUs\n",
-		clstr->id, cpumask_weight(&clstr->cpus));
-
-leave:
-	return 0;
-}
-
-static void hmp_unregister_cluster(struct cluster *clstr)
-{
-	struct cpufreq_interactive_policyinfo *ppol;
-	int i;
-
-	if (clstr) {
-		kthread_stop(clstr->speedchange_task);
-		put_task_struct(clstr->speedchange_task);
-
-		for_each_cpu(i, &clstr->cpus) {
-			ppol = per_cpu(polinfo, i);
-			ppol->cluster = NULL;
-		}
-
-		list_del(&clstr->list);
-
-		pr_info("-> remove cluster_%d with %d CPUs\n",
-			   clstr->id, cpumask_weight(&clstr->cpus));
-
-		kzfree(clstr);
-	}
-}
-#endif	/* CONFIG_SCHED_HMP */
 
 static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		unsigned int event)
@@ -1943,14 +1563,6 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		else
 			cached_common_tunables = tunables;
 
-#ifdef CONFIG_SCHED_HMP
-		mutex_lock(&gov_lock);
-		rc = hmp_register_cluster(policy->related_cpus);
-		mutex_unlock(&gov_lock);
-
-		if (rc)
-			return rc;
-#endif
 		break;
 
 	case CPUFREQ_GOV_POLICY_EXIT:
@@ -1980,6 +1592,8 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		mutex_lock(&gov_lock);
 
 		freq_table = cpufreq_frequency_get_table(policy->cpu);
+		if (!tunables->hispeed_freq)
+			tunables->hispeed_freq = policy->max;
 
 		ppol = per_cpu(polinfo, policy->cpu);
 		ppol->policy = policy;
@@ -2060,19 +1674,10 @@ struct cpufreq_governor cpufreq_gov_interactive = {
 
 static int __init cpufreq_interactive_init(void)
 {
-#ifndef CONFIG_SCHED_HMP
 	struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
-#endif
 
-	mutex_init(&gov_lock);
-<<<<<<< HEAD
-	mutex_init(&sched_lock);
-
-#ifndef CONFIG_SCHED_HMP
 	spin_lock_init(&speedchange_cpumask_lock);
-
-=======
->>>>>>> a5ef960... sched: Revert HMP and some MSM specific features
+	mutex_init(&gov_lock);
 	speedchange_task =
 		kthread_create(cpufreq_interactive_speedchange_task, NULL,
 			       "cfinteractive");
@@ -2084,7 +1689,6 @@ static int __init cpufreq_interactive_init(void)
 
 	/* NB: wake up so the thread does not look hung to the freezer */
 	wake_up_process_no_notif(speedchange_task);
-#endif
 
 	return cpufreq_register_governor(&cpufreq_gov_interactive);
 }
@@ -2098,18 +1702,10 @@ module_init(cpufreq_interactive_init);
 static void __exit cpufreq_interactive_exit(void)
 {
 	int cpu;
-#ifdef CONFIG_SCHED_HMP
-	struct cluster *clstr, *tmp;
-
-	for_each_cluster_safe(clstr, tmp) {
-		hmp_unregister_cluster(clstr);
-	}
-#else
-	kthread_stop(speedchange_task);
-	put_task_struct(speedchange_task);
-#endif
 
 	cpufreq_unregister_governor(&cpufreq_gov_interactive);
+	kthread_stop(speedchange_task);
+	put_task_struct(speedchange_task);
 
 	for_each_possible_cpu(cpu)
 		free_policyinfo(cpu);

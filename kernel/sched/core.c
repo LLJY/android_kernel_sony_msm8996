@@ -5,8 +5,6 @@
  *
  *  Copyright (C) 1991-2002  Linus Torvalds
  *
- *  Copyright (c) 2014, NVIDIA CORPORATION.  All rights reserved.
- *
  *  1996-12-23  Modified by Dave Grothe to fix bugs in semaphores and
  *		make semaphores SMP safe
  *  1998-11-19	Implemented schedule_timeout() and related stuff
@@ -1587,7 +1585,6 @@ static inline int got_boost_kick(void)
 
 	return test_bit(BOOST_KICK, &rq->hmp_flags);
 }
-
 
 static inline void clear_boost_kick(int cpu)
 {
@@ -4537,10 +4534,9 @@ unsigned long wait_task_inactive(struct task_struct *p, long match_state)
 		 * is actually now running somewhere else!
 		 */
 		while (task_running(rq, p)) {
-			if (match_state && unlikely(cpu_relaxed_read_long
- 				(&(p->state)) != match_state))
+			if (match_state && unlikely(p->state != match_state))
 				return 0;
-			cpu_read_relax();
+			cpu_relax();
 		}
 
 		/*
@@ -5035,8 +5031,8 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	 * If the owning (remote) cpu is still in the middle of schedule() with
 	 * this task as prev, wait until its done referencing the task.
 	 */
-	while (cpu_relaxed_read(&(p->on_cpu)))
-		cpu_read_relax();
+	while (p->on_cpu)
+		cpu_relax();
 	/*
 	 * Pairs with the smp_wmb() in finish_lock_switch().
 	 */
@@ -5863,36 +5859,6 @@ unsigned long nr_iowait_cpu(int cpu)
 	return atomic_read(&this->nr_iowait);
 }
 
-#ifdef CONFIG_CPU_QUIET
-u64 nr_running_integral(unsigned int cpu)
-{
-	unsigned int seqcnt;
-	u64 integral;
-	struct rq *q;
-
-	if (cpu >= nr_cpu_ids)
-		return 0;
-
-	q = cpu_rq(cpu);
-
-	/*
-	 * Update average to avoid reading stalled value if there were
-	 * no run-queue changes for a long time. On the other hand if
-	 * the changes are happening right now, just read current value
-	 * directly.
-	 */
-
-	seqcnt = read_seqcount_begin(&q->ave_seqcnt);
-	integral = do_nr_running_integral(q);
-	if (read_seqcount_retry(&q->ave_seqcnt, seqcnt)) {
-		read_seqcount_begin(&q->ave_seqcnt);
-		integral = q->nr_running_integral;
-	}
-
-	return integral;
-}
-#endif
-
 void get_iowait_load(unsigned long *nr_waiters, unsigned long *load)
 {
 	struct rq *this = this_rq();
@@ -6192,8 +6158,7 @@ static noinline void __schedule_bug(struct task_struct *prev)
 static inline void schedule_debug(struct task_struct *prev)
 {
 #ifdef CONFIG_SCHED_STACK_END_CHECK
-	if (unlikely(task_stack_end_corrupted(prev)))
-		panic("corrupted stack end detected inside scheduler\n");
+	BUG_ON(unlikely(task_stack_end_corrupted(prev)));
 #endif
 	/*
 	 * Test if we are atomic. Since do_exit() needs to call into
@@ -8765,7 +8730,6 @@ migration_call(struct notifier_block *nfb, unsigned long action, void *hcpu)
 		set_window_start(rq);
 		raw_spin_unlock_irqrestore(&rq->lock, flags);
 		rq->calc_load_update = calc_load_update;
-		rq->next_balance = jiffies;
 		break;
 
 	case CPU_ONLINE:

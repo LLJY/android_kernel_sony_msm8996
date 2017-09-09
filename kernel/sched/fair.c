@@ -46,8 +46,8 @@
  * (to see the precise effective timeslice length of your workload,
  *  run vmstat and monitor the context-switches (cs) field)
  */
-unsigned int sysctl_sched_latency = 3000000ULL;
-unsigned int normalized_sysctl_sched_latency = 3000000ULL;
+unsigned int sysctl_sched_latency = 6000000ULL;
+unsigned int normalized_sysctl_sched_latency = 6000000ULL;
 
 /*
  * The initial- and re-scaling of tunables is configurable
@@ -65,13 +65,13 @@ enum sched_tunable_scaling sysctl_sched_tunable_scaling
  * Minimal preemption granularity for CPU-bound tasks:
  * (default: 0.75 msec * (1 + ilog(ncpus)), units: nanoseconds)
  */
-unsigned int sysctl_sched_min_granularity = 300000ULL;
-unsigned int normalized_sysctl_sched_min_granularity = 300000ULL;
+unsigned int sysctl_sched_min_granularity = 750000ULL;
+unsigned int normalized_sysctl_sched_min_granularity = 750000ULL;
 
 /*
  * is kept at sysctl_sched_latency / sysctl_sched_min_granularity
  */
-static unsigned int sched_nr_latency = 10;
+static unsigned int sched_nr_latency = 8;
 
 /*
  * After fork, child runs first. If set to 0 (default) then
@@ -95,10 +95,10 @@ unsigned int __read_mostly sysctl_sched_wake_to_idle;
  * and reduces their over-scheduling. Synchronous workloads will still
  * have immediate wakeup/sleep latencies.
  */
-unsigned int sysctl_sched_wakeup_granularity = 500000UL;
-unsigned int normalized_sysctl_sched_wakeup_granularity = 500000UL;
+unsigned int sysctl_sched_wakeup_granularity = 1000000UL;
+unsigned int normalized_sysctl_sched_wakeup_granularity = 1000000UL;
 
-const_debug unsigned int sysctl_sched_migration_cost = 250000UL;
+const_debug unsigned int sysctl_sched_migration_cost = 500000UL;
 
 /*
  * The exponential sliding  window over which load is averaged for shares
@@ -118,7 +118,7 @@ unsigned int __read_mostly sysctl_sched_shares_window = 10000000UL;
  *
  * default: 5 msec, units: microseconds
   */
-unsigned int sysctl_sched_cfs_bandwidth_slice = 3000UL;
+unsigned int sysctl_sched_cfs_bandwidth_slice = 5000UL;
 #endif
 
 static inline void update_load_add(struct load_weight *lw, unsigned long inc)
@@ -2376,7 +2376,7 @@ unsigned int __read_mostly sysctl_sched_big_waker_task_load_pct = 25;
  * task. This eliminates the LPM exit latency associated with the idle
  * CPUs in the waker cluster.
  */
-unsigned int __read_mostly sysctl_sched_prefer_sync_wakee_to_waker = 1;
+unsigned int __read_mostly sysctl_sched_prefer_sync_wakee_to_waker;
 
 /*
  * CPUs with load greater than the sched_spill_load_threshold are not
@@ -3257,10 +3257,11 @@ bias_to_prev_cpu(struct cpu_select_env *env, struct cluster_cpu_stats *stats)
 }
 
 static inline bool
-wake_to_waker_cluster(struct cpu_select_env *env, int this_cpu)
+wake_to_waker_cluster(struct cpu_select_env *env)
 {
 	return !env->need_idle && !env->reason && env->sync &&
-	       task_will_fit(env->p, this_cpu);
+	       task_load(current) > sched_big_waker_task_load &&
+	       task_load(env->p) < sched_small_wakee_task_load;
 }
 
 static inline int
@@ -3314,7 +3315,7 @@ static int select_best_cpu(struct task_struct *p, int target, int reason,
 			env.rtg = grp;
 	} else {
 		cluster = cpu_rq(cpu)->cluster;
-		if (wake_to_waker_cluster(&env, cpu)) {
+		if (wake_to_waker_cluster(&env)) {
 			if (sysctl_sched_prefer_sync_wakee_to_waker &&
 				cpu_rq(cpu)->nr_running == 1 &&
 				cpumask_test_cpu(cpu, tsk_cpus_allowed(p)) &&
